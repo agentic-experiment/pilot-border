@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>pilot-border</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#070b1a;font-family:system-ui,sans-serif;color:#eaf2ff;user-select:none;-webkit-user-select:none}
+canvas{display:block;width:100vw;height:100vh}
+#ui{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;pointer-events:none}
+.card{pointer-events:auto;background:rgba(10,16,40,.72);border:1px solid rgba(120,180,255,.25);border-radius:16px;padding:28px 34px;backdrop-filter:blur(8px);box-shadow:0 10px 60px rgba(0,0,0,.5);max-width:min(92vw,440px)}
+h1{margin:0 0 6px;font-size:34px;letter-spacing:2px}h1 span{color:#5df2ff}
+p{margin:8px 0;color:#a9bce0;font-size:15px;line-height:1.5}
+button{pointer-events:auto;margin-top:14px;font-size:18px;padding:12px 28px;border:0;border-radius:999px;background:linear-gradient(90deg,#5df2ff,#7a7bff);color:#06121f;font-weight:800;cursor:pointer}
+button:active{transform:scale(.97)}
+#hud{position:fixed;top:14px;left:0;right:0;display:flex;justify-content:center;gap:24px;pointer-events:none;font-weight:700;font-size:20px;text-shadow:0 2px 12px #000}
+.hidden{display:none!important}
+small{color:#6b7fa8}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud" class="hidden"><div id="score">0</div><div id="best" style="color:#5df2ff">★ 0</div></div>
+<div id="ui"><div class="card" id="card">
+<h1>pilot<span>-border</span></h1>
+<p>Fly the light. Stay inside the glowing border.<br>Hold <b>mouse / touch / space</b> to climb, release to dive.</p>
+<p><small>One hit outside the border = crash.</small></p>
+<button id="btn">fly ▸</button>
+<p id="over" style="color:#ff7a9e;font-weight:800"></p>
+</div></div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+let W,H,DPR;function rs(){DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0)}addEventListener('resize',rs);rs();
+let state='menu',t=0,score=0,best=+(localStorage.getItem('pb-best')||0);
+let py=0,vy=0,trail=[],parts=[];
+const scoreEl=document.getElementById('score'),bestEl=document.getElementById('best'),
+ui=document.getElementById('ui'),card=document.getElementById('card'),
+btn=document.getElementById('btn'),over=document.getElementById('over'),hud=document.getElementById('hud');
+bestEl.textContent='★ '+best;
+// ponytail: single sine-stack = border, no lib needed
+function borderY(x,tt){return H*0.5+Math.sin(x*0.004+tt*1.6)*H*0.16+Math.sin(x*0.011-tt*2.3)*H*0.06}
+function gap(){return Math.max(64,H*0.16- score*0.15)} // shrinks with score
+let held=false;
+addEventListener('pointerdown',e=>{held=true;if(state!=='play')start()});
+addEventListener('pointerup',()=>held=false);
+addEventListener('keydown',e=>{if(e.code==='Space'||e.code==='ArrowUp'){held=true;e.preventDefault();if(state!=='play')start()}});
+addEventListener('keyup',e=>{if(e.code==='Space'||e.code==='ArrowUp')held=false});
+btn.onclick=e=>{e.stopPropagation();start()};
+function start(){state='play';t=0;score=0;py=H/2;vy=0;trail=[];parts=[];over.textContent='';ui.classList.add('hidden');hud.classList.remove('hidden')}
+function die(){state='menu';best=Math.max(best,Math.floor(score));localStorage.setItem('pb-best',best);bestEl.textContent='★ '+best;
+ui.classList.remove('hidden');hud.classList.add('hidden');btn.textContent='retry ▸';over.textContent='crashed at '+Math.floor(score)+'m — best '+best+'m';
+for(let i=0;i<60;i++)parts.push({x:W*0.3,y:py,vx:(Math.random()-.5)*8,vy:(Math.random()-.5)*8,l:1})}
+let last=performance.now();
+function frame(now){let dt=Math.min(0.033,(now-last)/1000);last=now;
+if(state==='play'){t+=dt;score+=dt*10;
+vy+=(held?-2200:1500)*dt;vy*=Math.pow(0.12,dt);vy=Math.max(-620,Math.min(620,vy));py+=vy*dt;
+const px=W*0.3,by=borderY(px,t),g=gap();
+trail.push({x:px,y:py});if(trail.length>40)trail.shift();
+for(let i=0;i<2;i++)parts.push({x:px-8,y:py+(Math.random()-.5)*6,vx:-120-Math.random()*120,vy:(Math.random()-.5)*60,l:1});
+if(py<0||py>H||Math.abs(py-by)>g/2)die();
+scoreEl.textContent=Math.floor(score);}
+parts=parts.filter(p=>p.l>0);parts.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.l-=dt*1.4});
+draw();requestAnimationFrame(frame)}
+function draw(){
+const gr=ctx.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#0b1030');gr.addColorStop(.5,'#131b4d');gr.addColorStop(1,'#3b1155');
+ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);
+// stars
+ctx.fillStyle='rgba(255,255,255,.6)';for(let i=0;i<70;i++){const sx=(i*197.3)%W,sy=(i*311.7)%H;ctx.globalAlpha=.15+.35*Math.abs(Math.sin(t*2+i));ctx.fillRect(sx,sy,2,2)}ctx.globalAlpha=1;
+const px=W*0.3,g=state==='play'?gap():Math.max(64,H*0.16);
+// border band
+ctx.beginPath();for(let x=0;x<=W;x+=8)ctx.lineTo(x,borderY(x,state==='play'?t:performance.now()/1000)-g/2);
+for(let x=W;x>=0;x-=8)ctx.lineTo(x,borderY(x,state==='play'?t:performance.now()/1000)+g/2);
+ctx.closePath();
+const bg=ctx.createLinearGradient(0,H*0.2,0,H*0.8);bg.addColorStop(0,'rgba(93,242,255,.10)');bg.addColorStop(.5,'rgba(122,123,255,.20)');bg.addColorStop(1,'rgba(255,122,158,.10)');
+ctx.fillStyle=bg;ctx.fill();
+// glowing edges
+for(const s of[-1,1]){ctx.beginPath();for(let x=0;x<=W;x+=6){const y=borderY(x,state==='play'?t:performance.now()/1000)+s*g/2;x?ctx.lineTo(x,y):ctx.moveTo(x,y)}
+ctx.strokeStyle=s<0?'#5df2ff':'#ff7a9e';ctx.lineWidth=3;ctx.shadowColor=ctx.strokeStyle;ctx.shadowBlur=18;ctx.stroke();ctx.shadowBlur=0}
+// trail
+if(state==='play'){for(let i=0;i<trail.length;i++){const p=trail[i];ctx.globalAlpha=i/trail.length*.8;ctx.fillStyle='#5df2ff';ctx.beginPath();ctx.arc(p.x-(trail.length-i)*3,p.y,3.5,0,7);ctx.fill()}ctx.globalAlpha=1;
+// ship
+ctx.save();ctx.translate(px,py);ctx.rotate(Math.max(-.5,Math.min(.5,vy/900)));
+ctx.shadowColor='#5df2ff';ctx.shadowBlur=22;ctx.fillStyle='#fff';
+ctx.beginPath();ctx.moveTo(14,0);ctx.lineTo(-10,-9);ctx.lineTo(-5,0);ctx.lineTo(-10,9);ctx.closePath();ctx.fill();ctx.restore()}
+// particles
+parts.forEach(p=>{ctx.globalAlpha=Math.max(0,p.l);ctx.fillStyle='#ffd166';ctx.fillRect(p.x,p.y,3,3)});ctx.globalAlpha=1;
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
